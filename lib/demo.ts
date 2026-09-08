@@ -113,6 +113,7 @@ export const demoData: DashboardData = {
       status: "complete",
       found_count: 3,
       error: null,
+      openai_response_id: null,
       started_at: daysAgo(0),
       finished_at: daysAgo(0),
     },

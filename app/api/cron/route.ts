@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runAllSearches } from "@/lib/runner";
+import { startAllSearches } from "@/lib/runner";
 
 export const maxDuration = 60;
 
@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    return NextResponse.json({ ok: true, results: await runAllSearches() });
+    return NextResponse.json({ ok: true, runs: await startAllSearches() }, { status: 202 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Cron run failed." }, { status: 500 });
   }

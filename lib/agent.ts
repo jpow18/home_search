@@ -17,6 +17,21 @@ export type AgentListing = {
   image_url: string | null;
 };
 
+type OpenAIResponse = {
+  id: string;
+  status: "queued" | "in_progress" | "completed" | "failed" | "cancelled" | "incomplete";
+  error?: { message?: string } | null;
+  incomplete_details?: { reason?: string } | null;
+  output?: { content?: { type: string; text?: string }[] }[];
+};
+
+export type ListingSearchResult = {
+  id: string;
+  status: OpenAIResponse["status"];
+  listings?: AgentListing[];
+  error?: string;
+};
+
 const listingSchema = {
   type: "object",
   additionalProperties: false,
@@ -57,17 +72,33 @@ function money(value: number | null) {
   return value == null ? "not set" : `$${value.toLocaleString("en-US")}`;
 }
 
-export async function findListings(rule: SearchRule): Promise<AgentListing[]> {
+function apiKey() {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured.");
+  return process.env.OPENAI_API_KEY;
+}
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
+async function openAIResponse(url: string, init?: RequestInit): Promise<OpenAIResponse> {
+  const response = await fetch(url, {
+    ...init,
     headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey()}`,
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
     },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`OpenAI search failed (${response.status}): ${body.slice(0, 300)}`);
+  }
+  return response.json();
+}
+
+export async function startListingSearch(rule: SearchRule): Promise<ListingSearchResult> {
+  const result = await openAIResponse("https://api.openai.com/v1/responses", {
+    method: "POST",
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL || "gpt-5-mini",
+      background: true,
       store: false,
       tools: [{ type: "web_search", search_context_size: "medium" }],
       text: {
@@ -92,17 +123,22 @@ Deal breakers: ${rule.deal_breakers || "none"}
 Return up to 12 current listings. Use the direct public listing URL, not a search page. Do not invent facts. Use null when a fact is not available. Score each listing from 0 to 100 against the full rule. State uncertainties as cons. Results are leads for the owner to verify, not guarantees.`,
     }),
   });
+  return { id: result.id, status: result.status };
+}
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`OpenAI search failed (${response.status}): ${body.slice(0, 300)}`);
+export async function retrieveListingSearch(id: string): Promise<ListingSearchResult> {
+  const result = await openAIResponse(`https://api.openai.com/v1/responses/${encodeURIComponent(id)}`);
+  if (result.status !== "completed") {
+    return {
+      id,
+      status: result.status,
+      error: result.error?.message || result.incomplete_details?.reason,
+    };
   }
 
-  const result = await response.json();
   const outputText = result.output
-    ?.flatMap((item: { content?: { type: string; text?: string }[] }) => item.content || [])
-    .find((item: { type: string }) => item.type === "output_text")?.text;
-
+    ?.flatMap((item) => item.content || [])
+    .find((item) => item.type === "output_text")?.text;
   if (!outputText) throw new Error("The search agent returned no structured results.");
-  return (JSON.parse(outputText) as { listings: AgentListing[] }).listings;
+  return { id, status: "completed", listings: (JSON.parse(outputText) as { listings: AgentListing[] }).listings };
 }

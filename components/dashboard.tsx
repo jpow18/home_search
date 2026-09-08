@@ -70,10 +70,28 @@ export function Dashboard({ initialData }: { initialData: DashboardData }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ searchId }),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-      setMessage(`Search complete. Found ${result.results.reduce((sum: number, item: { found: number }) => sum + item.found, 0)} listings.`);
-      startTransition(() => router.refresh());
+      const started = await response.json();
+      if (!response.ok) throw new Error(started.error);
+      const runIds = started.runs.map((run: { id: string }) => run.id);
+      if (!runIds.length) throw new Error("There are no active searches to run.");
+
+      const query = new URLSearchParams(runIds.map((id: string) => ["id", id]));
+      const deadline = Date.now() + 9 * 60_000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
+        const checkResponse = await fetch(`/api/run?${query}`, { cache: "no-store" });
+        const result = await checkResponse.json();
+        if (!checkResponse.ok) throw new Error(result.error);
+        if (result.status === "failed") {
+          throw new Error(result.runs.find((run: { error?: string }) => run.error)?.error || "The search failed.");
+        }
+        if (result.status === "complete") {
+          setMessage(`Search complete. Found ${result.runs.reduce((sum: number, item: { found: number }) => sum + item.found, 0)} listings.`);
+          startTransition(() => router.refresh());
+          return;
+        }
+      }
+      throw new Error("The search is still running. Try again in a moment.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The search failed.");
     } finally {

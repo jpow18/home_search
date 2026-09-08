@@ -45,6 +45,7 @@ export type Run = {
   status: "running" | "complete" | "failed";
   found_count: number;
   error: string | null;
+  openai_response_id: string | null;
   started_at: string;
   finished_at: string | null;
 };
