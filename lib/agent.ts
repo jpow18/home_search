@@ -99,7 +99,7 @@ function range(min: number | null, max: number | null) {
 async function rentCastCandidates(rule: SearchRule) {
   if (!process.env.RENTCAST_API_KEY) return [];
 
-  const location = rule.location.match(/^(.+?)(?:\s*\+\s*(\d+(?:\.\d+)?)\s*(?:mi|miles?))?$/i);
+  const location = rule.location.match(/^(.+?)(?:\s*\+\s*(\d+(?:\.\d+)?)\s*(?:mi|miles?)(?:\s+around)?)?$/i);
   const place = location?.[1].trim() || rule.location;
   const radius = location?.[2];
   const cityState = place.match(/^(.+),\s*([A-Z]{2})$/i);
