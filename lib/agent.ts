@@ -52,7 +52,7 @@ const listingSchema = {
           address: { type: "string" },
           price: { type: ["number", "null"] },
           currency: { type: "string" },
-          property_type: { type: "string" },
+          property_type: { type: "string", enum: ["home", "land"] },
           beds: { type: ["number", "null"] },
           baths: { type: ["number", "null"] },
           acres: { type: ["number", "null"] },

@@ -1,5 +1,6 @@
 import { retrieveListingSearch, startListingSearch, type AgentListing } from "./agent";
 import { sendAlert } from "./email";
+import { matchesHardFilters } from "./searches";
 import { getSupabase } from "./supabase";
 import type { Run, SearchRule } from "./types";
 import { normalizeListingUrl, sourceFromUrl } from "./urls";
@@ -45,7 +46,7 @@ export async function startSearch(rule: SearchRule): Promise<RunResult> {
 
 async function finishRun(rule: SearchRule, runId: string, listings: AgentListing[]): Promise<RunResult> {
   const supabase = getSupabase();
-  const normalized = listings.flatMap((listing) => {
+  const normalized = listings.filter((listing) => matchesHardFilters(listing, rule)).flatMap((listing) => {
     try {
       return [{ ...listing, url: normalizeListingUrl(listing.url) }];
     } catch {

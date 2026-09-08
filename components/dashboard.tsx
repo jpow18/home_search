@@ -358,8 +358,8 @@ function SearchForm({ demo, rule, onClose, onMessage }: { demo: boolean; rule: S
             <label className="wide">Where to search<input name="location" required maxLength={200} defaultValue={rule?.location} placeholder="Asheville, NC + 40 miles" /></label>
             <label>Property type<select name="property_type" defaultValue={rule?.property_type || "either"}><option value="either">Home or land</option><option value="home">Home</option><option value="land">Land</option></select></label>
             <label>Minimum bedrooms<input name="min_beds" type="number" min="0" step="1" defaultValue={rule?.min_beds ?? ""} placeholder="2" /></label>
-            <label>Minimum price<input name="min_price" type="number" min="0" step="1000" defaultValue={rule?.min_price ?? ""} placeholder="$250,000" /></label>
-            <label>Maximum price<input name="max_price" type="number" min="0" step="1000" defaultValue={rule?.max_price ?? ""} placeholder="$650,000" /></label>
+            <label>Minimum price<CurrencyInput name="min_price" value={rule?.min_price} placeholder="$250,000" /></label>
+            <label>Maximum price<CurrencyInput name="max_price" value={rule?.max_price} placeholder="$650,000" /></label>
             <label>Minimum acres<input name="min_acres" type="number" min="0" step="0.1" defaultValue={rule?.min_acres ?? ""} placeholder="2" /></label>
             <label>Alert email<input name="alert_email" type="email" defaultValue={rule?.alert_email} placeholder="you@example.com" /></label>
             <label className="wide">Must haves<textarea name="must_haves" rows={2} defaultValue={rule?.must_haves} placeholder="Mountain view, reliable internet, no HOA" /></label>
@@ -370,5 +370,24 @@ function SearchForm({ demo, rule, onClose, onMessage }: { demo: boolean; rule: S
         </form>
       </section>
     </div>
+  );
+}
+
+function CurrencyInput({ name, value, placeholder }: { name: string; value?: number | null; placeholder: string }) {
+  const format = (amount: string | number) => `$${Number(amount).toLocaleString("en-US")}`;
+  const [display, setDisplay] = useState(value == null ? "" : format(value));
+  return (
+    <input
+      name={name}
+      type="text"
+      inputMode="numeric"
+      maxLength={16}
+      value={display}
+      placeholder={placeholder}
+      onChange={(event) => {
+        const digits = event.target.value.replace(/\D/g, "");
+        setDisplay(digits ? format(digits) : "");
+      }}
+    />
   );
 }

@@ -1,4 +1,20 @@
-const optionalNumber = (value: unknown) => value === "" || value == null ? null : Number(value);
+import type { AgentListing } from "./agent";
+import type { SearchRule } from "./types";
+
+const optionalNumber = (value: unknown) => {
+  if (value === "" || value == null) return null;
+  const cleaned = String(value).replace(/[$,\s]/g, "");
+  return cleaned ? Number(cleaned) : null;
+};
+
+export function matchesHardFilters(listing: AgentListing, rule: SearchRule) {
+  if (rule.property_type !== "either" && listing.property_type !== rule.property_type) return false;
+  if (rule.min_price != null && (listing.price == null || listing.price < rule.min_price)) return false;
+  if (rule.max_price != null && (listing.price == null || listing.price > rule.max_price)) return false;
+  if (rule.min_beds != null && (listing.beds == null || listing.beds < rule.min_beds)) return false;
+  if (rule.min_acres != null && (listing.acres == null || listing.acres < rule.min_acres)) return false;
+  return true;
+}
 
 export function searchAttributes(input: unknown) {
   if (!input || typeof input !== "object") return { error: "Invalid search data." } as const;
