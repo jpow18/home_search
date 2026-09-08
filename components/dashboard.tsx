@@ -14,17 +14,21 @@ import {
   LandPlot,
   MapPin,
   Menu,
+  Pause,
+  Pencil,
+  Play,
   Plus,
   Radar,
   Search,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { DashboardData, Listing, ListingStatus } from "@/lib/types";
+import type { DashboardData, Listing, ListingStatus, SearchRule } from "@/lib/types";
 
 type Tab = "new" | "saved";
 
@@ -43,6 +47,7 @@ export function Dashboard({ initialData }: { initialData: DashboardData }) {
   const [tab, setTab] = useState<Tab>("new");
   const [selectedSearch, setSelectedSearch] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
+  const [editingSearch, setEditingSearch] = useState<SearchRule | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [message, setMessage] = useState("");
   const [running, setRunning] = useState(false);
@@ -58,6 +63,7 @@ export function Dashboard({ initialData }: { initialData: DashboardData }) {
     const statusMatch = tab === "saved" ? listing.status === "saved" : listing.status === "new";
     return statusMatch && (selectedSearch === "all" || listing.search_id === selectedSearch);
   }), [localListings, selectedSearch, tab]);
+  const selectedRule = initialData.searches.find((rule) => rule.id === selectedSearch);
 
   const runAgent = async (searchId?: string) => {
     if (initialData.demo) return setMessage("Add your Supabase and OpenAI keys to run a real search.");
@@ -117,6 +123,34 @@ export function Dashboard({ initialData }: { initialData: DashboardData }) {
     }
   };
 
+  const setSearchActive = async (rule: SearchRule) => {
+    if (initialData.demo) return setMessage("Demo searches are read-only. Connect Supabase to manage them.");
+    const response = await fetch("/api/searches", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: rule.id, active: !rule.active }),
+    });
+    const result = await response.json();
+    if (!response.ok) return setMessage(result.error || "Could not update the search.");
+    setMessage(rule.active ? "Search paused." : "Search resumed.");
+    startTransition(() => router.refresh());
+  };
+
+  const deleteSearch = async (rule: SearchRule) => {
+    if (initialData.demo) return setMessage("Demo searches are read-only. Connect Supabase to manage them.");
+    if (!window.confirm(`Delete “${rule.name}” and all of its listings? This cannot be undone.`)) return;
+    const response = await fetch("/api/searches", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: rule.id }),
+    });
+    const result = await response.json();
+    if (!response.ok) return setMessage(result.error || "Could not delete the search.");
+    setSelectedSearch("all");
+    setMessage("Search deleted.");
+    startTransition(() => router.refresh());
+  };
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
@@ -136,7 +170,7 @@ export function Dashboard({ initialData }: { initialData: DashboardData }) {
         <div className="sidebar-section">
           <div className="section-heading">
             <span>Your searches</span>
-            <button onClick={() => setShowForm(true)} aria-label="Add search"><Plus size={16} /></button>
+            <button onClick={() => { setEditingSearch(null); setShowForm(true); }} aria-label="Add search"><Plus size={16} /></button>
           </div>
           <div className="search-rule-list">
             {initialData.searches.map((rule, index) => (
@@ -209,7 +243,12 @@ export function Dashboard({ initialData }: { initialData: DashboardData }) {
                   {initialData.searches.map((rule) => <option key={rule.id} value={rule.id}>{rule.name}</option>)}
                 </select>
               </label>
-              <button className="add-search" onClick={() => setShowForm(true)}><Plus size={16} /> New search</button>
+              {selectedRule && <>
+                <button className="search-action" onClick={() => { setEditingSearch(selectedRule); setShowForm(true); }}><Pencil size={15} /> Edit</button>
+                <button className="search-action" onClick={() => setSearchActive(selectedRule)}>{selectedRule.active ? <Pause size={15} /> : <Play size={15} />} {selectedRule.active ? "Pause" : "Resume"}</button>
+                <button className="search-action danger" onClick={() => deleteSearch(selectedRule)}><Trash2 size={15} /> Delete</button>
+              </>}
+              <button className="add-search" onClick={() => { setEditingSearch(null); setShowForm(true); }}><Plus size={16} /> New search</button>
             </div>
           </section>
 
@@ -229,7 +268,7 @@ export function Dashboard({ initialData }: { initialData: DashboardData }) {
         </div>
       </main>
 
-      {showForm && <SearchForm demo={initialData.demo} onClose={() => setShowForm(false)} onMessage={setMessage} />}
+      {showForm && <SearchForm demo={initialData.demo} rule={editingSearch} onClose={() => setShowForm(false)} onMessage={setMessage} />}
     </div>
   );
 }
@@ -276,7 +315,7 @@ function ListingCard({ listing, onUpdate }: { listing: Listing; onUpdate: (listi
   );
 }
 
-function SearchForm({ demo, onClose, onMessage }: { demo: boolean; onClose: () => void; onMessage: (value: string) => void }) {
+function SearchForm({ demo, rule, onClose, onMessage }: { demo: boolean; rule: SearchRule | null; onClose: () => void; onMessage: (value: string) => void }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -291,9 +330,9 @@ function SearchForm({ demo, onClose, onMessage }: { demo: boolean; onClose: () =
     setError("");
     const data = Object.fromEntries(new FormData(event.currentTarget));
     const response = await fetch("/api/searches", {
-      method: "POST",
+      method: rule ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, ...(rule ? { id: rule.id } : {}) }),
     });
     const result = await response.json();
     if (!response.ok) {
@@ -302,7 +341,7 @@ function SearchForm({ demo, onClose, onMessage }: { demo: boolean; onClose: () =
       return;
     }
     onClose();
-    onMessage("Search saved. Scout will include it in the next run.");
+    onMessage(rule ? "Search updated. New parameters apply to the next run." : "Search saved. Scout will include it in the next run.");
     router.refresh();
   };
 
@@ -310,24 +349,24 @@ function SearchForm({ demo, onClose, onMessage }: { demo: boolean; onClose: () =
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="search-modal" role="dialog" aria-modal="true" aria-labelledby="search-title">
         <div className="modal-head">
-          <div><p className="eyebrow">Give Scout a new trail</p><h2 id="search-title">Create a property search</h2></div>
+          <div><p className="eyebrow">{rule ? "Adjust this trail" : "Give Scout a new trail"}</p><h2 id="search-title">{rule ? "Edit property search" : "Create a property search"}</h2></div>
           <button className="icon-button" onClick={onClose} aria-label="Close"><X size={20} /></button>
         </div>
         <form onSubmit={submit}>
           <div className="field-grid">
-            <label className="wide">Search name<input name="name" required maxLength={100} placeholder="Blue Ridge basecamp" /></label>
-            <label className="wide">Where to search<input name="location" required maxLength={200} placeholder="Asheville, NC + 40 miles" /></label>
-            <label>Property type<select name="property_type" defaultValue="either"><option value="either">Home or land</option><option value="home">Home</option><option value="land">Land</option></select></label>
-            <label>Minimum bedrooms<input name="min_beds" type="number" min="0" step="1" placeholder="2" /></label>
-            <label>Minimum price<input name="min_price" type="number" min="0" step="1000" placeholder="$250,000" /></label>
-            <label>Maximum price<input name="max_price" type="number" min="0" step="1000" placeholder="$650,000" /></label>
-            <label>Minimum acres<input name="min_acres" type="number" min="0" step="0.1" placeholder="2" /></label>
-            <label>Alert email<input name="alert_email" type="email" placeholder="you@example.com" /></label>
-            <label className="wide">Must haves<textarea name="must_haves" rows={2} placeholder="Mountain view, reliable internet, no HOA" /></label>
-            <label className="wide">Deal breakers<textarea name="deal_breakers" rows={2} placeholder="Flood zone, seasonal access" /></label>
+            <label className="wide">Search name<input name="name" required maxLength={100} defaultValue={rule?.name} placeholder="Blue Ridge basecamp" /></label>
+            <label className="wide">Where to search<input name="location" required maxLength={200} defaultValue={rule?.location} placeholder="Asheville, NC + 40 miles" /></label>
+            <label>Property type<select name="property_type" defaultValue={rule?.property_type || "either"}><option value="either">Home or land</option><option value="home">Home</option><option value="land">Land</option></select></label>
+            <label>Minimum bedrooms<input name="min_beds" type="number" min="0" step="1" defaultValue={rule?.min_beds ?? ""} placeholder="2" /></label>
+            <label>Minimum price<input name="min_price" type="number" min="0" step="1000" defaultValue={rule?.min_price ?? ""} placeholder="$250,000" /></label>
+            <label>Maximum price<input name="max_price" type="number" min="0" step="1000" defaultValue={rule?.max_price ?? ""} placeholder="$650,000" /></label>
+            <label>Minimum acres<input name="min_acres" type="number" min="0" step="0.1" defaultValue={rule?.min_acres ?? ""} placeholder="2" /></label>
+            <label>Alert email<input name="alert_email" type="email" defaultValue={rule?.alert_email} placeholder="you@example.com" /></label>
+            <label className="wide">Must haves<textarea name="must_haves" rows={2} defaultValue={rule?.must_haves} placeholder="Mountain view, reliable internet, no HOA" /></label>
+            <label className="wide">Deal breakers<textarea name="deal_breakers" rows={2} defaultValue={rule?.deal_breakers} placeholder="Flood zone, seasonal access" /></label>
           </div>
           {error && <p className="form-error">{error}</p>}
-          <div className="modal-actions"><button type="button" onClick={onClose}>Cancel</button><button className="primary" disabled={saving}>{saving ? "Saving…" : "Save search"}</button></div>
+          <div className="modal-actions"><button type="button" onClick={onClose}>Cancel</button><button className="primary" disabled={saving}>{saving ? "Saving…" : rule ? "Save changes" : "Save search"}</button></div>
         </form>
       </section>
     </div>

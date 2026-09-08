@@ -1,44 +1,59 @@
 import { NextResponse } from "next/server";
+import { searchAttributes } from "@/lib/searches";
 import { getSupabase } from "@/lib/supabase";
 
-const optionalNumber = (value: unknown) => value === "" || value == null ? null : Number(value);
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const name = String(body.name || "").trim();
-    const location = String(body.location || "").trim();
-    const propertyType = ["home", "land", "either"].includes(body.property_type) ? body.property_type : "either";
-    const alertEmail = String(body.alert_email || "").trim();
+    const parsed = searchAttributes(await request.json());
+    if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 422 });
 
-    if (!name || !location) return NextResponse.json({ error: "Name and location are required." }, { status: 422 });
-    if (alertEmail && !/^\S+@\S+\.\S+$/.test(alertEmail)) return NextResponse.json({ error: "Enter a valid alert email." }, { status: 422 });
-
-    const row = {
-      name,
-      location,
-      property_type: propertyType,
-      min_price: optionalNumber(body.min_price),
-      max_price: optionalNumber(body.max_price),
-      min_beds: optionalNumber(body.min_beds),
-      min_acres: optionalNumber(body.min_acres),
-      must_haves: String(body.must_haves || "").trim(),
-      deal_breakers: String(body.deal_breakers || "").trim(),
-      alert_email: alertEmail,
-    };
-
-    const numbers = [row.min_price, row.max_price, row.min_beds, row.min_acres].filter((value) => value != null);
-    if (numbers.some((value) => !Number.isFinite(value) || value! < 0)) {
-      return NextResponse.json({ error: "Numeric filters must be zero or greater." }, { status: 422 });
-    }
-    if (row.min_price != null && row.max_price != null && row.min_price > row.max_price) {
-      return NextResponse.json({ error: "Minimum price cannot exceed maximum price." }, { status: 422 });
-    }
-
-    const { data, error } = await getSupabase().from("searches").insert(row).select().single();
+    const { data, error } = await getSupabase().from("searches").insert(parsed.data).select().single();
     if (error) throw new Error(error.message);
     return NextResponse.json(data, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not create search." }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    if (!body || typeof body !== "object" || typeof body.id !== "string" || !uuid.test(body.id)) {
+      return NextResponse.json({ error: "Invalid search ID." }, { status: 400 });
+    }
+
+    let changes;
+    if (typeof body.active === "boolean" && !("name" in body)) {
+      changes = { active: body.active };
+    } else {
+      const parsed = searchAttributes(body);
+      if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 422 });
+      changes = parsed.data;
+    }
+
+    const { data, error } = await getSupabase().from("searches").update(changes).eq("id", body.id).select().maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return NextResponse.json({ error: "Search not found." }, { status: 404 });
+    return NextResponse.json(data);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not update search." }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json();
+    if (!body || typeof body !== "object" || typeof body.id !== "string" || !uuid.test(body.id)) {
+      return NextResponse.json({ error: "Invalid search ID." }, { status: 400 });
+    }
+
+    const { data, error } = await getSupabase().from("searches").delete().eq("id", body.id).select("id").maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return NextResponse.json({ error: "Search not found." }, { status: 404 });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not delete search." }, { status: 500 });
   }
 }
