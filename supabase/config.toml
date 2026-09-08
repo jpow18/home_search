@@ -1,0 +1,7 @@
+project_id = "home_search"
+
+[db]
+major_version = 17
+
+[db.migrations]
+enabled = true
