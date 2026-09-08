@@ -1,8 +1,8 @@
 # HomeSeek
 
-HomeSeek is a small, self-hosted property search agent. You define home or land searches. It searches the live web, scores each listing against your rules, deduplicates results, and emails strong new matches.
+HomeSeek is a small, self-hosted property search agent. You define home or land searches. It checks RentCast and the live web, scores each listing against your rules, deduplicates results, and emails strong new matches.
 
-The dashboard runs on Vercel. Data lives in Supabase. Web search and triage use the OpenAI Responses API. Email alerts use Resend.
+The dashboard runs on Vercel. Data lives in Supabase. RentCast supplies active-listing candidates. Web search and triage use the OpenAI Responses API. Email alerts use Resend.
 
 ## What it does
 
@@ -35,6 +35,7 @@ You need Node.js 20 or newer and accounts for [Supabase](https://supabase.com), 
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    OPENAI_API_KEY=sk-...
+   RENTCAST_API_KEY=your-rentcast-api-key
    APP_PASSWORD=choose-a-long-password
    CRON_SECRET=choose-another-random-secret
    ```
@@ -68,6 +69,7 @@ Keep `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `RESEND_API_KEY`, `APP_PASSW
 ## Cost controls
 
 - Each active rule makes one OpenAI request per run.
+- Each supported US city, state, ZIP, or radius rule makes one RentCast request for up to 500 active listings per run. Without a RentCast key, Scout uses web search alone.
 - A run returns at most 12 results per rule.
 - Daily cron runs once, not hourly.
 - Set `OPENAI_MODEL` if you want to use another Responses API model.
