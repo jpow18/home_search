@@ -4,6 +4,7 @@ import { startAllSearches } from "@/lib/runner";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
+  console.info("runtime-security-audit", JSON.stringify({ node: process.versions.node, brotli: process.versions.brotli }));
   if (!process.env.CRON_SECRET || request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
