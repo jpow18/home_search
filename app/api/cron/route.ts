@@ -8,6 +8,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  if (new URL(request.url).searchParams.has("runtime")) {
+    return NextResponse.json({ node: process.versions.node, brotli: process.versions.brotli });
+  }
+
   try {
     return NextResponse.json({ ok: true, runs: await startAllSearches() }, { status: 202 });
   } catch (error) {
